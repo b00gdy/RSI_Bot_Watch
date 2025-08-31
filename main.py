@@ -13,6 +13,9 @@ BINANCE_BASE = "https://api.binance.com"
 SYMBOLS = [
     "BTCUSDT",
     "ETHUSDT",
+    "SOLUSDT",
+    "LINKUSDT",
+    "AVAXUSDT",                                    
     # Add more symbols here, e.g. "SOLUSDT", "AVAXUSDT"
 ]
 
