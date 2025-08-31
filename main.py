@@ -1,43 +1,44 @@
-# main.py — RSI(14) daily alerts + debug pings
+# main.py — RSI(14) daily alerts for BTC, ETH, SOL, AVAX, LINK, BNB
+# Sends Telegram (and optional Discord) messages when RSI crosses BELOW 30
+# and when it crosses BACK ABOVE 30. Runs in GitHub Actions.
 
 import os
 import requests
 from datetime import datetime, timezone
 
-# Use multiple public endpoints (mirror first), with fallback
-BINANCE_BASES = [
-    "https://data-api.binance.vision",  # public data mirror (usually works from GitHub)
-    "https://api.binance.com",
-    "https://api1.binance.com",
-    "https://api2.binance.com",
-    "https://api3.binance.com",
-]
-
-DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (GitHubActions RSI Bot)"
-}
-
-# === CONFIG ===
+# ---------- Settings ----------
 SYMBOLS = [
     "BTCUSDT",  # Bitcoin
     "ETHUSDT",  # Ethereum
     "SOLUSDT",  # Solana
     "AVAXUSDT", # Avalanche
     "LINKUSDT", # Chainlink
-    "BNBUSDT",  # Binance Coin
+    "BNBUSDT",  # BNB
 ]
 
 RSI_PERIOD = 14
-RSI_THRESHOLD = 49.3
-LOOKBACK = 200  # number of daily candles to fetch
-ENABLE_STARTUP_PING = True  # send a quick "I'm alive" message each run for debugging
+RSI_THRESHOLD = 49.3        # REAL setting (change only for testing)
+LOOKBACK = 200              # number of daily candles to fetch
+ENABLE_STARTUP_PING = False # set True if you want a "bot started" message each run
 
-# Notifications (from GitHub Secrets)
+# Binance public data endpoints (use mirror first; fall back if blocked)
+BINANCE_BASES = [
+    "https://data-api.binance.vision",
+    "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+]
+DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (GitHubActions RSI Bot)"}
+
+# Secrets (set in GitHub → Settings → Secrets and variables → Actions)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")  # optional
+# --------------------------------
 
-def send_telegram(msg):
+
+def send_telegram(msg: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Telegram secrets missing; skipping Telegram send.")
         return
@@ -49,7 +50,8 @@ def send_telegram(msg):
     except Exception as e:
         print(f"Telegram send error: {e}")
 
-def send_discord(msg):
+
+def send_discord(msg: str) -> None:
     if not DISCORD_WEBHOOK_URL:
         return
     try:
@@ -58,19 +60,24 @@ def send_discord(msg):
     except Exception as e:
         print(f"Discord send error: {e}")
 
-def notify(msg):
+
+def notify(msg: str) -> None:
     print(msg)
     send_telegram(msg)
     send_discord(msg)
 
+
 def rsi(values, period=14):
+    # Wilder's RSI
     if len(values) < period + 1:
         return []
+
     gains, losses = [], []
     for i in range(1, period + 1):
         change = values[i] - values[i - 1]
         gains.append(max(change, 0.0))
         losses.append(abs(min(change, 0.0)))
+
     avg_gain = sum(gains) / period
     avg_loss = sum(losses) / period
 
@@ -82,6 +89,7 @@ def rsi(values, period=14):
 
     rsis = [None] * period
     rsis.append(calc_rsi(avg_gain, avg_loss))
+
     for i in range(period + 1, len(values)):
         change = values[i] - values[i - 1]
         gain = max(change, 0.0)
@@ -89,6 +97,7 @@ def rsi(values, period=14):
         avg_gain = (avg_gain * (period - 1) + gain) / period
         avg_loss = (avg_loss * (period - 1) + loss) / period
         rsis.append(calc_rsi(avg_gain, avg_loss))
+
     return rsis
 
 
@@ -99,7 +108,6 @@ def get_binance_klines(symbol, interval="1d", limit=LOOKBACK):
             url = f"{base}/api/v3/klines"
             params = {"symbol": symbol, "interval": interval, "limit": limit}
             r = requests.get(url, params=params, timeout=30, headers=DEFAULT_HEADERS)
-            # 451 = geo/legal block -> try next base
             if r.status_code == 451:
                 print(f"{symbol}: {base} returned 451, trying next mirror…")
                 last_err = r
@@ -110,29 +118,21 @@ def get_binance_klines(symbol, interval="1d", limit=LOOKBACK):
             print(f"{symbol}: error from {base}: {e}")
             last_err = e
             continue
-    # If all bases failed, raise the last error so we see it in logs
     if isinstance(last_err, requests.Response):
         last_err.raise_for_status()
     else:
         raise last_err or RuntimeError("All Binance endpoints failed")
 
-def latest_rsi_cross_under(symbol):
+
+def latest_rsi_pair(symbol):
+    """Return today's and yesterday's RSI values (rounded)."""
     kl = get_binance_klines(symbol, "1d", LOOKBACK)
-    closes = [float(c[4]) for c in kl]  # close price at index 4
+    closes = [float(c[4]) for c in kl]  # close price index 4
     rsis = rsi(closes, RSI_PERIOD)
-    if len(rsis) < 2:
+    if len(rsis) < 2 or rsis[-1] is None or rsis[-2] is None:
         return None
-    today_rsi = rsis[-1]
-    yday_rsi = rsis[-2]
-    if today_rsi is None or yday_rsi is None:
-        return None
-    crossed = yday_rsi >= RSI_THRESHOLD and today_rsi < RSI_THRESHOLD
-    return {
-        "symbol": symbol,
-        "today_rsi": round(today_rsi, 2),
-        "yday_rsi": round(yday_rsi, 2),
-        "crossed": crossed,
-    }
+    return round(rsis[-1], 2), round(rsis[-2], 2)  # (today, yesterday)
+
 
 def main():
     print("Starting RSI check…")
@@ -143,21 +143,21 @@ def main():
     alerts = []
     for sym in SYMBOLS:
         try:
-            res = latest_rsi_cross_under(sym)
-            if not res:
+            pair = latest_rsi_pair(sym)
+            if not pair:
                 print(f"{sym}: insufficient data for RSI.")
                 continue
-            print(f"{sym} RSI today {res['today_rsi']} (yday {res['yday_rsi']})")
-          today = res["today_rsi"]
-yday = res["yday_rsi"]
 
-# Oversold alert
-if yday >= RSI_THRESHOLD and today < RSI_THRESHOLD:
-    alerts.append(f"⚠️ *{sym}* RSI crossed *below {RSI_THRESHOLD}*: {today}")
+            today, yday = pair
+            print(f"{sym} RSI today {today} (yday {yday})")
 
-# Recovery alert
-if yday <= RSI_THRESHOLD and today > RSI_THRESHOLD:
-    alerts.append(f"✅ *{sym}* RSI crossed *back above {RSI_THRESHOLD}*: {today}")
+            # Oversold alert (crossed DOWN through threshold)
+            if yday >= RSI_THRESHOLD and today < RSI_THRESHOLD:
+                alerts.append(f"⚠️ *{sym}* RSI crossed *below {RSI_THRESHOLD}*: {today}")
+
+            # Recovery alert (crossed UP through threshold)
+            if yday <= RSI_THRESHOLD and today > RSI_THRESHOLD:
+                alerts.append(f"✅ *{sym}* RSI crossed *back above {RSI_THRESHOLD}*: {today}")
 
         except requests.HTTPError as e:
             print(f"{sym} HTTP error: {e}")
@@ -171,7 +171,6 @@ if yday <= RSI_THRESHOLD and today > RSI_THRESHOLD:
     else:
         print("No crosses today.")
 
+
 if __name__ == "__main__":
     main()
-
-
