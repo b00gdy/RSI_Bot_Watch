@@ -148,8 +148,17 @@ def main():
                 print(f"{sym}: insufficient data for RSI.")
                 continue
             print(f"{sym} RSI today {res['today_rsi']} (yday {res['yday_rsi']})")
-            if res["crossed"]:
-                alerts.append(f"⚠️ *{sym}* RSI crossed *below {RSI_THRESHOLD}*: {res['today_rsi']}")
+          today = res["today_rsi"]
+yday = res["yday_rsi"]
+
+# Oversold alert
+if yday >= RSI_THRESHOLD and today < RSI_THRESHOLD:
+    alerts.append(f"⚠️ *{sym}* RSI crossed *below {RSI_THRESHOLD}*: {today}")
+
+# Recovery alert
+if yday <= RSI_THRESHOLD and today > RSI_THRESHOLD:
+    alerts.append(f"✅ *{sym}* RSI crossed *back above {RSI_THRESHOLD}*: {today}")
+
         except requests.HTTPError as e:
             print(f"{sym} HTTP error: {e}")
         except Exception as e:
