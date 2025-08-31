@@ -17,7 +17,7 @@ SYMBOLS = [
 ]
 
 RSI_PERIOD = 14
-RSI_THRESHOLD = 49.3        # REAL setting (change only for testing)
+RSI_THRESHOLD = 53        # REAL setting (change only for testing)
 LOOKBACK = 200              # number of daily candles to fetch
 ENABLE_STARTUP_PING = False # set True if you want a "bot started" message each run
 
