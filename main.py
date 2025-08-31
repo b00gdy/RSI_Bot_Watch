@@ -4,7 +4,18 @@ import os
 import requests
 from datetime import datetime, timezone
 
-BINANCE_BASE = "https://api.binance.com"
+# Use multiple public endpoints (mirror first), with fallback
+BINANCE_BASES = [
+    "https://data-api.binance.vision",  # public data mirror (usually works from GitHub)
+    "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+]
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (GitHubActions RSI Bot)"
+}
 
 # === CONFIG ===
 SYMBOLS = [
@@ -80,18 +91,6 @@ def rsi(values, period=14):
         rsis.append(calc_rsi(avg_gain, avg_loss))
     return rsis
 
-# Use multiple public endpoints (mirror first), with fallback
-BINANCE_BASES = [
-    "https://data-api.binance.vision",  # public data mirror (usually works from GitHub)
-    "https://api.binance.com",
-    "https://api1.binance.com",
-    "https://api2.binance.com",
-    "https://api3.binance.com",
-]
-
-DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (GitHubActions RSI Bot)"
-}
 
 def get_binance_klines(symbol, interval="1d", limit=LOOKBACK):
     last_err = None
