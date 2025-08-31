@@ -28,7 +28,7 @@ SYMBOLS = [
 ]
 
 RSI_PERIOD = 14
-RSI_THRESHOLD = 30.0
+RSI_THRESHOLD = 60.0
 LOOKBACK = 200  # number of daily candles to fetch
 ENABLE_STARTUP_PING = True  # send a quick "I'm alive" message each run for debugging
 
