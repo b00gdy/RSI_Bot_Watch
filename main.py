@@ -80,12 +80,42 @@ def rsi(values, period=14):
         rsis.append(calc_rsi(avg_gain, avg_loss))
     return rsis
 
+# Use multiple public endpoints (mirror first), with fallback
+BINANCE_BASES = [
+    "https://data-api.binance.vision",  # public data mirror (usually works from GitHub)
+    "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+]
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (GitHubActions RSI Bot)"
+}
+
 def get_binance_klines(symbol, interval="1d", limit=LOOKBACK):
-    url = f"https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    last_err = None
+    for base in BINANCE_BASES:
+        try:
+            url = f"{base}/api/v3/klines"
+            params = {"symbol": symbol, "interval": interval, "limit": limit}
+            r = requests.get(url, params=params, timeout=30, headers=DEFAULT_HEADERS)
+            # 451 = geo/legal block -> try next base
+            if r.status_code == 451:
+                print(f"{symbol}: {base} returned 451, trying next mirror…")
+                last_err = r
+                continue
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException as e:
+            print(f"{symbol}: error from {base}: {e}")
+            last_err = e
+            continue
+    # If all bases failed, raise the last error so we see it in logs
+    if isinstance(last_err, requests.Response):
+        last_err.raise_for_status()
+    else:
+        raise last_err or RuntimeError("All Binance endpoints failed")
 
 def latest_rsi_cross_under(symbol):
     kl = get_binance_klines(symbol, "1d", LOOKBACK)
